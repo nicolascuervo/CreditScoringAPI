@@ -10,6 +10,13 @@ python = "^3.10"
 mlflow = "^2.16.2"
 virtualenv = "^20.26.6"
 streamlit = "^1.39.0"
+uvicorn = "^0.32.0"
+fastapi = "^0.115.2"
+pydantic = "^2.9.2"
+projet07 = {git = "https://github.com/nicolascuervo/CreditScoring.git"}
+psutil = "6.0.0"
+numpy = "2.0.0"
+imblearn = "^0.0"
 
 
 [tool.poetry.group.dev.dependencies]

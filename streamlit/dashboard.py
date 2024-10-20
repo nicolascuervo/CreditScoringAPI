@@ -3,85 +3,102 @@ import streamlit as st
 import requests
 import ast
 import numpy as np
+import json
 
-def request_prediction(model_uri, data):
-    headers = {"Content-Type": "application/json"}
-
-    data_json = {'data': data}
-    response = requests.request(
-        method='POST', headers=headers, url=model_uri, json=data_json)
-
-    if response.status_code != 200:
-        raise Exception(
-            "Request failed with status {}, {}".format(response.status_code, response.text))
-
-    return response.json()
+def request_model(model_uri, request, data):
+    response = requests.post( f"{model_uri}/{request}/", json=data,)
+    return response
 
 def load_dashboard(inputs:pd.DataFrame):
-    output = {}
+    output: dict[str: str|float|int] = {}
+    
     for feature in inputs.index:
-        
+        value = inputs.loc[feature, 'value']
+
+
         if inputs.loc[feature,'Dtype'] =='object':
+            if value=='nan' or pd.isna(value):
+                value='NA'                
             options = ast.literal_eval(inputs.loc[feature,'categories'].replace('nan', "'NA'"))
             output[feature] = st.selectbox(
                 label=inputs.loc[feature, 'Column'],
                 options=options,
-                # value=inputs.loc[feature, 'value'],
+                index=options.index(value),
                 help=inputs.loc[feature, 'Description']
                 )
+            if output[feature] == 'NA':
+                output[feature] = ''
+            
         elif inputs.loc[feature,'has_nan'] :
+            if pd.isna(value):
+                value='na'
             output[feature] = st.text_input(
                 label=inputs.loc[feature, 'Column'],                         
-                value=inputs.loc[feature, 'value'],
+                value=value,
+                help=inputs.loc[feature, 'Description']
+                ) 
+            if output[feature]=='' or output[feature] == 'na':
+                output[feature] = ''
+            elif inputs.loc[feature,'Dtype'] =='float64':
+                output[feature] = float(output[feature])
+            elif inputs.loc[feature,'Dtype'] =='int64':
+                output[feature] = int(output[feature])
+            
+
+        elif (inputs.loc[feature,'Dtype']=='int64') and (inputs.loc[feature,'n_unique']==2):            
+            output[feature] = st.toggle(            
+                label=inputs.loc[feature, 'Column'],
+                value=int(value)==1,
                 help=inputs.loc[feature, 'Description']
                 )
-        elif inputs.loc[feature,'Dtype'] == 'int64':
+            output[feature] = int(output[feature])
+        elif (inputs.loc[feature,'Dtype']=='int64'):
             output[feature] = st.number_input(
                 label=inputs.loc[feature, 'Column'],                         
-                value=float(inputs.loc[feature, 'value']),
-                step=1.0,
-                help=inputs.loc[feature, 'Description']
-                )
+                value=int(value),
+                step=1,
+                help=inputs.loc[feature, 'Description'],
+                )              
         else:
             output[feature] = st.number_input(
                 label=inputs.loc[feature, 'Column'],                         
-                value=float(inputs.loc[feature, 'value']),
+                value=float(value),
+                format=inputs.loc[feature, 'format'],
                 help=inputs.loc[feature, 'Description'],
-                )    
+                )  
+        
     return output  
       
 
 
 def main():
-    MLFLOW_URI = 'http://127.0.0.1:5000/invocations'
-    # CORTEX_URI = 'http://0.0.0.0:8890/'
-    # RAY_SERVE_URI = 'http://127.0.0.1:8000/regressor'
-
-    # api_choice = st.sidebar.selectbox(
-    #     'Quelle API souhaitez vous utiliser',
-    #     ['MLflow', 'Cortex', 'Ray Serve'])
+    
+    FAST_API = 'http://127.0.0.1:8000'
+    
     inputs = pd.read_csv("streamlit/input_information.csv", index_col=0)
     
     st.title('Consult credit approval')
-
     output = load_dashboard(inputs)
-    
-
-    predict_btn = st.button('Prédire')
+    predict_btn = st.sidebar.button('Prédire')
     if predict_btn:
-        print(output)
-        pred = None
+        
+        response = request_model(FAST_API, 'validate_client/deployment_v1', output)
+        
+        if response.status_code==200:
+            prediction = json.loads(response.text)
+            
+            if prediction['credit_approved']:
+                approval_text=f"Credit approved:"
+                explanation_text = f"Default probability {prediction['default_probability']:0.1%} is lower than recommended threshold {prediction['validation_threshold']:0.1%}"
+            else:
+                approval_text=approval_text=f"Credit denied:"
+                explanation_text = f" Default probability {prediction['default_probability']:0.1%} is greater or equal to recommended threshold {prediction['validation_threshold']:0.1%}"
+                
+            st.sidebar.write(approval_text)
+            st.sidebar.write(explanation_text)
+        else:
+            st.sidebar.write(response.text)
 
-        # if api_choice == 'MLflow':
-        #     pred = request_prediction(MLFLOW_URI, data)[0] * 100000
-        # elif api_choice == 'Cortex':
-        #     pred = request_prediction(CORTEX_URI, data)[0] * 100000
-        # elif api_choice == 'Ray Serve':
-        #     pred = request_prediction(RAY_SERVE_URI, data)[0] * 100000
-        pred = 0.95
-
-        st.write(
-            'Le prix médian d\'une habitation est de {:.2f}'.format(pred))
 
 
 if __name__ == '__main__':
