@@ -1,15 +1,26 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 import mlflow
 import json
-from typing import Any
+from typing import Any, Optional
 from projet07.custom_transformers import ColumnTransformer
 from imblearn.pipeline import Pipeline
 import numpy as np
 import pandas as pd
 
+
 app = FastAPI()
-json_file = '../models_to_deploy.json'
+json_file = '../data/models_to_deploy.json'
+
+# Create a model dynamicaly based on te kinds of inputs expected
+input_information = pd.read_csv('../data/input_information.csv', index_col=0)
+field_types = input_information['Dtype'].apply(
+    lambda x : eval(f'({x} | dict[int, {x}], ...)')).to_dict()
+
+print(field_types)
+
+ModelEntries = create_model('ModelEntries', **field_types)
+
 with open(json_file,'r') as file:
     models_to_deploy = json.load(file)
 
@@ -20,38 +31,34 @@ class ScoringModel(BaseModel):
 models: dict[str, ScoringModel] = {}
 for model_info in models_to_deploy:
     key = model_info['model_name'] + '_v' + model_info['version']
+
     models[key] = ScoringModel(
         model=mlflow.pyfunc.load_model(model_uri=model_info['source'])._model_impl.sklearn_model,
         validation_threshold=model_info['validation_threshold'],
     )
 
+# for model_name_v in models.keys():
+@app.post("/validate_client/{model_name_v}")
+async def validate_client(model_name_v: str, input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]:
+    '''
+
+    '''
+    input_data = input_data.dict()
+    
+    input_df = pd.DataFrame(data=input_data.values(), index=input_data.keys())
+    input_df = input_df.replace({None:np.nan}).T
+    
+    y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]        
+    
+    validation_threshold = models[model_name_v].validation_threshold
+
+    respond = {'default_probability' : y_pred_proba,
+                'validation_threshold' : validation_threshold,
+                'credit_approved' : y_pred_proba < validation_threshold,
+                }
+    
+    return respond
 
 
-for model_name_v in models.keys():
-    @app.post("/validate_client/{model_name_v}")
-    async def validate_client(input_data: dict)->dict[str,float|bool]:
-        print(model_name_v)
-        input_data_nan = {key:np.nan for key, value in input_data.items() if value=='' }
-        input_data = input_data.copy()
-        input_data.update(input_data_nan)
-        
-        input_df = pd.DataFrame(data=input_data.values(), index=input_data.keys()).T
-        y_pred_proba = models[model_name_v].model.predict_proba(input_df)[0, 1]
-        
-        validation_threshold = models[model_name_v].validation_threshold
-
-        respond = {'default_probability' : y_pred_proba,
-                   'validation_threshold' : validation_threshold,
-                   'credit_approved' : y_pred_proba < validation_threshold,
-                  }
-        
-        return respond
 
 
-
-
-# # FastAPI handles JSON serialization and deserialization for us.
-# # We can simply use built-in python and Pydantic types, in this case dict[int, Item].
-# @app.get("/")
-# def index() -> dict[str, dict[int, Item]]:
-#     return {"items": items}
