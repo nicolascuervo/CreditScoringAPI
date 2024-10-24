@@ -37,7 +37,7 @@ for model_info in models_to_deploy:
         validation_threshold=model_info['validation_threshold'],
     )
 
-# for model_name_v in models.keys():
+
 @app.post("/validate_client/{model_name_v}")
 async def validate_client(model_name_v: str, input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]:
     '''

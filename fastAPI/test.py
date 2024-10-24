@@ -15,8 +15,8 @@ X_train = pd.read_csv('data/application_train.csv', index_col='SK_ID_CURR').drop
 X_test = pd.read_csv('data/application_test.csv', index_col='SK_ID_CURR')
 X_full = pd.concat([X_train, X_test], axis=0).sort_index()
 
-input_data = X_full.iloc[5:10,:].replace({np.nan:None}).to_dict()
-print(input_data)
+input_data = X_train.sample(100).replace({np.nan:None}).to_dict()
+# print(input_data)
 
 
 response = request_model(FAST_API, 'validate_client/deployment_v1', input_data)
