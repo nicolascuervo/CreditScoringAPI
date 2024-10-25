@@ -28,10 +28,3 @@ or
 uvicorn backend_fastapi:app --reload
 ```
 for automaticaly reloading API after modification.
-
-# Dashboard
-
-On terminal:
-```
-streamlit run path/to/dashboard.py
-```
