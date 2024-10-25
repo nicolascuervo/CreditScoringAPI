@@ -1,8 +1,22 @@
 # CreditScoringAPI
 
-# How to use
-After performing the data exploration and model developpment, trainning and exploration a json file should be produced and included in the root path of this project with name `models_to_deploy.json` that contains the list of dictionnaries that describe the versions of models whose structure should be comptible with mflow development as the one below:
+This project was developepd in an academic context based on the scenario presented at https://www.kaggle.com/c/home-credit-default-risk/.
 
+An API for one or more models to score and aprove/deny credit requests for one or more clients is presented.
+
+> It runs localy at this stage.
+
+# How to use
+
+After performing the data exploration and model developpment, trainning and exploration a json file should be produced and included in the root/data folder of this project with name `models_to_deploy.json` that contains the list of dictionnaries that describe the versions of models whose structure should be comptible with mflow development as the one below:
+
+```
+project-root/
+│
+└── data/
+    ├── model_to_deploy.json
+    └── input_information.csv
+```
 
 ```json
 [
@@ -13,14 +27,15 @@ After performing the data exploration and model developpment, trainning and expl
         "validation_threshold": "0.4866684226260628"
     }
 ]
-```
-> Please note the absolut path for the model
 
-# Deploying API
-On terminal go to directory `path/to/api_deployment/fastAPI/' and 
-input:
 ```
-uvicorn backend_fastapi:app --reload
+> Please note the absolut path for the model 
+# Deployment
+
+On terminal go to directory `path/to/api_deployment/fastAPI/' and input:
+
+```
+uvicorn backend_fastapi:app
 ```
 or 
 
