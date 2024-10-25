@@ -9,7 +9,9 @@ import numpy as np
 import pandas as pd
 
 
-app = FastAPI()
+app = FastAPI(
+        title='Credit Scoring API'
+)
 json_file = '../data/models_to_deploy.json'
 
 # Create a model dynamicaly based on te kinds of inputs expected
@@ -38,26 +40,27 @@ for model_info in models_to_deploy:
     )
 
 
-@app.post("/validate_client/{model_name_v}")
-async def validate_client(model_name_v: str, input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]:
-    '''
+for model_name_v in models.keys():
+    @app.post(f"/validate_client/{model_name_v}")
+    async def validate_client( input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]:
+        f'''
+        {model_name_v}
+        '''
+        input_data = input_data.dict()
+        
+        input_df = pd.DataFrame(data=input_data.values(), index=input_data.keys())
+        input_df = input_df.replace({None:np.nan}).T
+        
+        y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]        
+        
+        validation_threshold = models[model_name_v].validation_threshold
 
-    '''
-    input_data = input_data.dict()
-    
-    input_df = pd.DataFrame(data=input_data.values(), index=input_data.keys())
-    input_df = input_df.replace({None:np.nan}).T
-    
-    y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]        
-    
-    validation_threshold = models[model_name_v].validation_threshold
-
-    respond = {'default_probability' : y_pred_proba,
-                'validation_threshold' : validation_threshold,
-                'credit_approved' : y_pred_proba < validation_threshold,
-                }
-    
-    return respond
+        respond = {'default_probability' : y_pred_proba,
+                    'validation_threshold' : validation_threshold,
+                    'credit_approved' : y_pred_proba < validation_threshold,
+                    }
+        
+        return respond
 
 
 
