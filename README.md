@@ -43,3 +43,11 @@ or
 uvicorn backend_fastapi:app --reload
 ```
 for automaticaly reloading API after modification.
+
+
+Documentation for the API can be consulted on
+```url
+url_api/docs
+```
+When the API is running
+
