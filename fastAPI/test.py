@@ -13,9 +13,7 @@ def request_model(model_uri, request, data):
 
 X_train = pd.read_csv('data/application_train.csv', index_col='SK_ID_CURR').drop(columns=['TARGET'])
 
-input_data = X_train.sample(3).replace({np.nan:None}).to_dict()
-
-# print(input_data)
+input_data = X_train.sample(100).replace({np.nan:None}).to_dict()
 
 
 print('Testing validate client')
@@ -35,5 +33,16 @@ response = request_model(FAST_API, 'deployment_v1/shap_value_attributes', input_
 if response.status_code==200:
     prediction = json.loads(response.text)            
     print(prediction)    
+else:
+    print(response.text)
+
+
+print('Global shap values')
+
+response = request_model(FAST_API, 'deployment_v1/shap_value_attributes', None)
+
+if response.status_code==200:
+    prediction = json.loads(response.text)            
+    print(prediction.keys())    
 else:
     print(response.text)

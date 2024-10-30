@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-from pydantic import BaseModel, Field, create_model, model_validator
+from fastapi import FastAPI, Query
+from pydantic import BaseModel, create_model
 import mlflow
 import json
 from typing import Any
@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from inspect import signature
 import shap
+from projet07.model_evaluation import get_feature_importance_from_model
 
 app = FastAPI(
         title = 'Credit Scoring API',
@@ -19,6 +20,7 @@ app = FastAPI(
 json_file = '../data/models_to_deploy.json'
 
 X_train = pd.read_csv('../data/application_train.csv', index_col='SK_ID_CURR').drop(columns=['TARGET'])
+
 
 # Create a model dynamicaly based on te kinds of inputs expected
 input_information = pd.read_csv('../data/input_information.csv', index_col=0)
@@ -33,22 +35,12 @@ with open(json_file,'r') as file:
 class ScoringModel(BaseModel):    
     model: Any    
     validation_threshold: float
-    X_train_treated: Any = Field(init=False)
+    X_train_treated: Any
+    global_shap_values: Any 
 
     class Config:
         arbitrary_types_allowed = True  # Allows non-primitive types like sklearn 
-        
-    @model_validator(mode="before")
-    def set_X_train_treated(cls, values):
-        model = values.get('model')
-        
-        if hasattr(model, 'step'):
-            steps = model.steps[:-1]
-            values['X_train_treated'] = Pipeline(steps).transform(X_train)
-        else:
-            values['X_train_treated'] = None  # Handle case when steps are missing
-        
-        return values
+       
 
 models: dict[str, ScoringModel] = {}
 for model_info in models_to_deploy:
@@ -56,11 +48,20 @@ for model_info in models_to_deploy:
     key = model_info['model_name'] + '_v' + model_info['version']
     print(f'INFO:', 'Loading model {key}...', end='\t')
     model = mlflow.pyfunc.load_model(model_uri=model_info['source'])._model_impl.sklearn_model
+    X_train_treated = Pipeline(model.steps[:-1]).transform(X_train)
+    explainer = shap.explainers.TreeExplainer(model.steps[-1][1], X_train_treated)
+    global_shap_values = explainer(X_train_treated.sample(1000))
+
     models[key] = ScoringModel(
         model=model,
         validation_threshold=model_info['validation_threshold'],
+        X_train_treated=X_train_treated,
+        global_shap_values=global_shap_values
     )
     print('Done')
+
+
+    
 
 @app.get(f"/available_model_name_version")
 def get_available_model_name_version()->list[str]:
@@ -119,21 +120,17 @@ for model_name_v in models.keys():
 
         y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]
         validation_threshold = models[model_name_v].validation_threshold
-        print(y_pred_proba, validation_threshold)
+        
         respond = {'default_probability' : y_pred_proba,
                     'validation_threshold' : validation_threshold,
                     'credit_approved' : y_pred_proba < validation_threshold,
                     }
         
-        return respond
-    
-    # replace model_name_v in documentation
-    validate_client.__doc__ = validate_client.__doc__.format(model_name_v=model_name_v)
-    #post function
+        return respond    
+    validate_client.__doc__ = validate_client.__doc__.format(model_name_v=model_name_v)    
     app.post(f"/{model_name_v}/validate_client")(validate_client)
-
-    @app.post(f"/{model_name_v}/shap_value_attributes")
-    def shap_value_attributes(input_data: ModelEntries)->list[dict[str,Any]]:     
+    
+    def shap_value_attributes(input_data: ModelEntries|None=None)->dict[str,Any]:
         """
         Computes SHAP values for the provided input data and extracts key attributes of the explanation for interpretation.
 
@@ -159,32 +156,72 @@ for model_name_v in models.keys():
         to ensure compatibility even if the Explanation class attributes change.
         - Attributes that are `numpy.ndarray` types are converted to lists for FastAPI serialization.
         """          
-        #prepare explainer
-        classifier = models[model_name_v].model.steps[-1][1]
-        explainer = shap.explainers.TreeExplainer(classifier, models[model_name_v].X_train_treated)
-
-        # prepare inputs 
-        X_input = credit_request_dict_to_dataframe(input_data)        
-        model_pretreatment = Pipeline(models[model_name_v].model.steps[:-1])        
-        X_treated = model_pretreatment.transform(X_input)
-
-        # shapify inputs
-        shap_values = explainer(X_treated)
         
-
+        if input_data is None:
+            shap_values = models[model_name_v].global_shap_values
+            
+        else:            
+            # prepare inputs 
+            X_input = credit_request_dict_to_dataframe(input_data)        
+            model_pretreatment = Pipeline(models[model_name_v].model.steps[:-1])        
+            X_treated = model_pretreatment.transform(X_input)
+            #prepare explainer
+            classifier = models[model_name_v].model.steps[-1][1]
+            explainer = shap.explainers.TreeExplainer(classifier, models[model_name_v].X_train_treated)
+            # shapify inputs
+            shap_values = explainer(X_treated)       
+        
         # extract explanation attributes to transfer
-        argument_list = signature(shap.Explanation.__init__).parameters.keys()
-
-        explanation_attrs = []
-        for shp_vls in shap_values:
-            attrs_dict = {
-                    attr: (getattr(shp_vls, attr).tolist() if isinstance(getattr(shp_vls, attr), np.ndarray) else getattr(shp_vls, attr))
-                    for attr in argument_list if attr != 'self'
-                }
-            explanation_attrs.append(attrs_dict)
-
+        argument_list = list(signature(shap.Explanation.__init__).parameters.keys())
+        argument_list.remove('self')
+        
+        explanation_attrs = {attr: (getattr(shap_values, attr).tolist() 
+                                    if isinstance(getattr(shap_values, attr), np.ndarray) 
+                                    else  getattr(shap_values, attr)
+                                )
+                                for attr in argument_list
+                            }        
         return explanation_attrs
-    
     shap_value_attributes.__doc__ = shap_value_attributes.__doc__.format(model_name_v=model_name_v)
     app.post(f"/{model_name_v}/shap_value_attributes")(shap_value_attributes)
+    
+    def get_global_feature_importance(
+            cum_importance_cut:float = Query(ge=0.0, le=1.0, description='Cumulative importance cut should be between 0 and 1') 
+            )->dict:
+        """
+        Extract feature importances from a model pipeline and return a DataFrame 
+        with the most important features based on cumulative importance.
+
+        This function assumes that the model is a pipeline where the final step 
+        is a classifier with a `feature_importances_` attribute (e.g., 
+        LightGBMClassifier). It calculates the normalized importance of each 
+        feature and selects the features whose cumulative importance reaches a 
+        specified threshold.
+
+        Args:
+            model (Pipeline): A scikit-learn pipeline object with a classifier 
+                            as the last step that exposes `feature_importances_`.
+                            The classifier must have a `feature_names_in_` 
+                            attribute to get the feature names.
+            cum_importance_cut (float): Cumulative importance threshold to select 
+                                        the most important features. 
+        Returns:
+            df (Dataframe.to_dict()) A DataFrame with the following columns:
+                - 'feature': Names of the features.
+                - 'importance': Importance values from the classifier.
+                - 'importance_normalized': Normalized importance values.
+                - 'cum_importance_normalized': Cumulative normalized importance.
+
+            most_important_features (list): List of feature names that together 
+                                            account for the cumulative importance 
+                                            up to the specified threshold.
+        """
+        feature_importances_domain, most_important_features = get_feature_importance_from_model(models[model_name_v].model.steps[-1][1], cum_importance_cut)
+        return {'feature_importances_domain': feature_importances_domain.to_dict(),
+                'most_important_features': most_important_features                
+                }
+    get_global_feature_importance.__doc__ = get_global_feature_importance.__doc__.format(model_name_v=model_name_v)
+    app.post(f"/{model_name_v}/get_global_feature_importance")(get_global_feature_importance)
+    
+    
     
