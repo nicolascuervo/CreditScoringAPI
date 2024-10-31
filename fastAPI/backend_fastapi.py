@@ -12,6 +12,9 @@ from inspect import signature
 import shap
 from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
+import sqlite3
+import pickle
+
 app = FastAPI(
         title = 'Credit Scoring API',
         description= 'API for serving one or more models that retreiveve structured' \
@@ -27,61 +30,70 @@ SHAP_SAMPLE_SIZE = int(os.getenv('SHAP_SAMPLE_SIZE'))
 json_file_path = os.getenv('MODELS_TO_DEPLOY_JSON')
 json_file = get_file_from(json_file_path, 'models_to_deploy.json')
 
-application_train_path = os.getenv('APPLICATION_TRAIN_CSV')
-application_train_csv =  get_file_from(application_train_path, 'application_train.csv')
+credit_requests_path = os.getenv('CREDIT_REQUESTS_DB')
+credit_requests_db =  get_file_from(credit_requests_path, 'credit_requests.db')
 
-input_information_csv = 'data/input_information.csv'
-
-
-
-
-X_train = pd.read_csv(application_train_csv, index_col='SK_ID_CURR')
-if 'TARGET' in X_train.columns:
-    X_train = X_train.drop(columns=['TARGET'])
+input_information_csv = 'data/input_information.csv' # TODO: integrate to database to make it cleaner
 
 # Create a model dynamicaly based on the kinds of inputs expected
 input_information = pd.read_csv(input_information_csv, index_col=0)
 field_types = input_information['Dtype'].apply(
     lambda x : eval(f'({x} | dict[int, {x}], ...)')).to_dict()
-
 ModelEntries = create_model('ModelEntries', **field_types)
-
-with open(json_file,'r') as file:
-    models_to_deploy = json.load(file)
-
+del(input_information)
 class ScoringModel(BaseModel):    
     model: Any    
     validation_threshold: float
-    X_train_treated: Any
-    global_shap_values: Any 
-
+    explainer_path: Any
+    shap_values_sample_path: Any 
     class Config:
         arbitrary_types_allowed = True  # Allows non-primitive types like sklearn 
-       
+
+# Load models
+with open(json_file,'r') as file:
+    models_to_deploy = json.load(file)
 
 models: dict[str, ScoringModel] = {}
+
+#Load data
+connection_obj = sqlite3.connect(credit_requests_db)
+X_train =  pd.read_sql_query('SELECT * FROM application_train',
+                    connection_obj, 
+                    index_col='SK_ID_CURR').replace({None:np.nan})
+
 for model_info in models_to_deploy:
     
     key = model_info['model_name'] + '_v' + model_info['version']
     print('INFO:', f'Loading model {key}...', end='\t')
     
+    # Load model
     model_dir = get_file_from(model_info["source"], f'{key}.zip')
     model = mlflow.pyfunc.load_model(model_uri=model_dir)._model_impl.sklearn_model
 
+    # Create tree explainer
     X_train_treated = Pipeline(model.steps[:-1]).transform(X_train)
     explainer = shap.explainers.TreeExplainer(model.steps[-1][1], X_train_treated)
+    explainer_path = f'{model_dir}/explainer.pkl'
+    with open(explainer_path,'wb') as file :
+        pickle.dump(explainer, file)
+    
+    # Create shap_values
     global_shap_values = explainer(X_train_treated.sample(SHAP_SAMPLE_SIZE))
+    shap_values_path = f'{model_dir}/shap_values.pkl'
+    with open(shap_values_path,'wb') as file :
+        pickle.dump(global_shap_values, file)
+
+    # Flush variables from memory
+    del(X_train_treated, explainer, global_shap_values)        
 
     models[key] = ScoringModel(
         model=model,
         validation_threshold=model_info['validation_threshold'],
-        X_train_treated=X_train_treated,
-        global_shap_values=global_shap_values
+        explainer_path=explainer_path,
+        shap_values_sample_path=shap_values_path,
     )
     print('Done')
 
-
-    
 
 @app.get("/available_model_name_version")
 def get_available_model_name_version()->list[str]:
@@ -178,16 +190,18 @@ for model_name_v in models.keys():
         """          
         
         if input_data is None:
-            shap_values = models[model_name_v].global_shap_values
-            
+            with open(models[model_name_v].shap_values_sample_path, 'rb') as file:
+                shap_values = pickle.load(file)            
         else:            
-            # prepare inputs 
+            # Prepare inputs 
             X_input = credit_request_dict_to_dataframe(input_data)        
             model_pretreatment = Pipeline(models[model_name_v].model.steps[:-1])        
             X_treated = model_pretreatment.transform(X_input)
-            #prepare explainer
-            classifier = models[model_name_v].model.steps[-1][1]
-            explainer = shap.explainers.TreeExplainer(classifier, models[model_name_v].X_train_treated)
+            
+            # Load explainer
+            with open(models[model_name_v].explainer_path, 'rb') as file:
+                explainer = pickle.load(file)
+                
             # shapify inputs
             shap_values = explainer(X_treated)       
         

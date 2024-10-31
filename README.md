@@ -8,6 +8,7 @@ An API for one or more models to score and aprove/deny credit requests for one o
 
 # How to use
 
+The files `application_train.csv` and `application_test.csv` from the [kaggle data](https://www.kaggle.com/c/home-credit-default-risk/data) should be converted to an sqlite database as done in notebook from parallel project [CreditScoring](https://github.com/nicolascuervo/CreditScoring). They must be loaded in two separate tables application_test and application_train. The url or path to the database should be placed in environment variable `CREDIT_REQUESTS_DB`
 
 ## locally 
 the following environment variables are to be defined in a file '.env' at root:
@@ -15,7 +16,7 @@ the following environment variables are to be defined in a file '.env' at root:
 ```
 SHAP_SAMPLE_SIZE=1000
 MODELS_TO_DEPLOY_JSON=path_to/models_to_deploy.json
-APPLICATION_TRAIN_CSV=path_to/application_train.csv
+CREDIT_REQUESTS_DB=path_to/credit_requests.db
 ```
 
 After performing the data exploration and model developpment, trainning and exploration a json file should be produced and included in the root/data folder of this project with name `models_to_deploy.json` that contains the list of dictionnaries that describe the versions of models whose structure should be comptible with mflow development as the one below:
@@ -32,17 +33,30 @@ After performing the data exploration and model developpment, trainning and expl
 ```
 > Please note the absolut path for the model 
 
+### Deployment
+
+On terminal go to directory `path/to/api_deployment/fastAPI/' and input:
+
+```
+uvicorn backend_fastapi:app
+```
+or 
+
+```
+uvicorn backend_fastapi:app --reload
+```
+for automaticaly reloading API after modification.
+
+
+Documentation for the API can be consulted on
+```url
+url_api/docs
+```
+When the API is running 
 
 ## Cloud
 
 
-the following environment variables are to be defined:
-
-```
-SHAP_SAMPLE_SIZE=1000
-MODELS_TO_DEPLOY_JSON=htttp/cloud_service.com/download_path?id=file_id1
-APPLICATION_TRAIN_CSV=htttp/cloud_service.com/download_path?id=file_id2
-```
 
 
 The model can be deployed on the cloud as a zip file :
@@ -72,30 +86,27 @@ And the json file can simply have a sharing file directing to the download url f
 ]
 ```
 
+### Heroku Deployment
 
-The file `application_train.csv` from the [kaggle data](https://www.kaggle.com/c/home-credit-default-risk/data) should also be present this folder as follows:
-
+Update requierements.txt with
+ ```
+poetry export -f requirements.txt --output requirements.txt --without-hashes
 ```
-project-root/
-│
-└── data/
-    ├── model_to_deploy.json
-    ├── application_train.csv
-    └── input_information.csv
-```
-# Deployment
+and push the requierment.txt 
 
-On terminal go to directory `path/to/api_deployment/fastAPI/' and input:
+Also push with file `Procfile` contaning this line for the API to deploy
 
 ```
-uvicorn backend_fastapi:app
+web: uvicorn fastAPI.backend_fastapi:app --host=0.0.0.0 --port=${PORT}
 ```
-or 
+
+the following environment variables are to be defined:
 
 ```
-uvicorn backend_fastapi:app --reload
+SHAP_SAMPLE_SIZE=1000
+MODELS_TO_DEPLOY_JSON=htttp/cloud_service.com/download_path?id=file_id1
+CREDIT_REQUESTS_DB=htttp/cloud_service.com/download_path?id=file_id2
 ```
-for automaticaly reloading API after modification.
 
 
 Documentation for the API can be consulted on
