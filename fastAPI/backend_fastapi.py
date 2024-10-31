@@ -12,6 +12,13 @@ from inspect import signature
 import shap
 from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
+app = FastAPI(
+        title = 'Credit Scoring API',
+        description= 'API for serving one or more models that retreiveve structured' \
+             + 'information on credit applications and returns an score and a validation treshold ' \
+             + 'over which the probability of default makes the approval of the credit unadvisable',
+        version="0.1.0"
+)
 
 load_dotenv()
 # size of random credit data to whose shap values will be initialized to be served in beeswarm plot
@@ -25,13 +32,7 @@ application_train_csv =  get_file_from(application_train_path, 'application_trai
 
 input_information_csv = 'data/input_information.csv'
 
-app = FastAPI(
-        title = 'Credit Scoring API',
-        description= 'API for serving one or more models that retreiveve structured' \
-             + 'information on credit applications and returns an score and a validation treshold ' \
-             + 'over which the probability of default makes the approval of the credit unadvisable',
-        version="0.1.0"
-)
+
 
 
 X_train = pd.read_csv(application_train_csv, index_col='SK_ID_CURR').drop(columns=['TARGET'])
