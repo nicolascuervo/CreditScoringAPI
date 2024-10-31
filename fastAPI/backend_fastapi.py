@@ -1,5 +1,7 @@
+import os
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, create_model
+from api_deployment.aux_func import get_file_from
 import mlflow
 import json
 from typing import Any
@@ -9,6 +11,19 @@ import pandas as pd
 from inspect import signature
 import shap
 from projet07.model_evaluation import get_feature_importance_from_model
+from dotenv import load_dotenv
+
+load_dotenv()
+# size of random credit data to whose shap values will be initialized to be served in beeswarm plot
+SHAP_SAMPLE_SIZE = int(os.getenv('SHAP_SAMPLE_SIZE')) 
+
+json_file_path = os.getenv('MODELS_TO_DEPLOY_JSON')
+json_file = get_file_from(json_file_path, 'models_to_deploy.json')
+
+application_train_path = os.getenv('APPLICATION_TRAIN_CSV')
+application_train_csv =  get_file_from(application_train_path, 'application_train.csv')
+
+input_information_csv = 'data/input_information.csv'
 
 app = FastAPI(
         title = 'Credit Scoring API',
@@ -17,13 +32,12 @@ app = FastAPI(
              + 'over which the probability of default makes the approval of the credit unadvisable',
         version="0.1.0"
 )
-json_file = '../data/models_to_deploy.json'
-
-X_train = pd.read_csv('../data/application_train.csv', index_col='SK_ID_CURR').drop(columns=['TARGET'])
 
 
-# Create a model dynamicaly based on te kinds of inputs expected
-input_information = pd.read_csv('../data/input_information.csv', index_col=0)
+X_train = pd.read_csv(application_train_csv, index_col='SK_ID_CURR').drop(columns=['TARGET'])
+
+# Create a model dynamicaly based on the kinds of inputs expected
+input_information = pd.read_csv(input_information_csv, index_col=0)
 field_types = input_information['Dtype'].apply(
     lambda x : eval(f'({x} | dict[int, {x}], ...)')).to_dict()
 
@@ -46,11 +60,14 @@ models: dict[str, ScoringModel] = {}
 for model_info in models_to_deploy:
     
     key = model_info['model_name'] + '_v' + model_info['version']
-    print(f'INFO:', 'Loading model {key}...', end='\t')
-    model = mlflow.pyfunc.load_model(model_uri=model_info['source'])._model_impl.sklearn_model
+    print('INFO:', f'Loading model {key}...', end='\t')
+    
+    model_dir = get_file_from(model_info["source"], f'{key}.zip')
+    model = mlflow.pyfunc.load_model(model_uri=model_dir)._model_impl.sklearn_model
+
     X_train_treated = Pipeline(model.steps[:-1]).transform(X_train)
     explainer = shap.explainers.TreeExplainer(model.steps[-1][1], X_train_treated)
-    global_shap_values = explainer(X_train_treated.sample(1000))
+    global_shap_values = explainer(X_train_treated.sample(SHAP_SAMPLE_SIZE))
 
     models[key] = ScoringModel(
         model=model,
@@ -63,20 +80,20 @@ for model_info in models_to_deploy:
 
     
 
-@app.get(f"/available_model_name_version")
+@app.get("/available_model_name_version")
 def get_available_model_name_version()->list[str]:
     """ Provides a list of `model_name_version` strings that indicate which versions of which models are abeing served by the API
     """
     return list(models.keys())
 
-def credit_request_dict_to_dataframe(input_data: ModelEntries):
+def credit_request_dict_to_dataframe(input_data: ModelEntries): # type: ignore
     input_data = input_data.dict()
     input_df = pd.DataFrame(data=input_data.values(), index=input_data.keys())
     input_df = input_df.replace({None:np.nan}).T
     return input_df
 
 for model_name_v in models.keys():    
-    async def validate_client( input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]:
+    async def validate_client( input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]: # type: ignore
         """
         Endpoint to validate a client's credit approval status based on a specific model.
 
@@ -130,7 +147,7 @@ for model_name_v in models.keys():
     validate_client.__doc__ = validate_client.__doc__.format(model_name_v=model_name_v)    
     app.post(f"/{model_name_v}/validate_client")(validate_client)
     
-    def shap_value_attributes(input_data: ModelEntries|None=None)->dict[str,Any]:
+    def shap_value_attributes(input_data: ModelEntries|None=None)->dict[str,Any]: # type: ignore
         """
         Computes SHAP values for the provided input data and extracts key attributes of the explanation for interpretation.
 
