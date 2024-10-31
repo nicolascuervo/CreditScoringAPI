@@ -12,7 +12,7 @@ An API for one or more models to score and aprove/deny credit requests for one o
 ## locally 
 the following environment variables are to be defined in a file '.env' at root:
 
-```plain_text
+```
 SHAP_SAMPLE_SIZE=1000
 MODELS_TO_DEPLOY_JSON=path_to/models_to_deploy.json
 APPLICATION_TRAIN_CSV=path_to/application_train.csv
