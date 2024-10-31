@@ -35,7 +35,9 @@ input_information_csv = 'data/input_information.csv'
 
 
 
-X_train = pd.read_csv(application_train_csv, index_col='SK_ID_CURR').drop(columns=['TARGET'])
+X_train = pd.read_csv(application_train_csv, index_col='SK_ID_CURR')
+if 'TARGET' in X_train.columns:
+    X_train = X_train.drop('TARGET')
 
 # Create a model dynamicaly based on the kinds of inputs expected
 input_information = pd.read_csv(input_information_csv, index_col=0)
