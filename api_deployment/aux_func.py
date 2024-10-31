@@ -27,7 +27,7 @@ def get_file_from(file_address, download_file_name=None):
         if download_file_name is None:
             raise ValueError("Please provide a download_file_name for remote files.")
         file_name, ext = download_file_name.rsplit('.', 1)
-        local_path = f"/tmp/{file_name}.{ext}"
+        local_path = f"data/{file_name}.{ext}"
 
         # Use gdown for Google Drive links
         if "drive.google.com" in file_address:
@@ -41,7 +41,7 @@ def get_file_from(file_address, download_file_name=None):
         
         # Handle zip extraction if needed
         if ext == 'zip':
-            file_dir = f"/tmp/{file_name}"
+            file_dir = f"data/{file_name}"
             with zipfile.ZipFile(local_path, "r") as zip_ref:
                 zip_ref.extractall(file_dir)
             local_path = file_dir
