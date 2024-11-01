@@ -2794,6 +2794,7 @@ matplotlib = "^3.9.2"
 mlflow = "^2.16.0"
 numpy = "^2.0"
 optuna = "^4.0.0"
+pydantic = "^2.9.2"
 scikit-learn = "^1.5.1"
 seaborn = "^0.13.2"
 shap = "^0.46.0"
@@ -2803,7 +2804,7 @@ virtualenv = "^20.26.6"
 type = "git"
 url = "https://github.com/nicolascuervo/CreditScoring.git"
 reference = "HEAD"
-resolved_reference = "7915c8546f773e3d7dba4b79e05a98de68634ced"
+resolved_reference = "3ad9591c364c3195eb87f986f00616ffb815b72a"
 
 [[package]]
 name = "prometheus-client"
@@ -4033,6 +4034,20 @@ anyio = ">=3.4.0,<5"
 full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7)", "pyyaml"]
 
 [[package]]
+name = "tdqm"
+version = "0.0.1"
+description = "Alias for typos of tqdm"
+optional = false
+python-versions = "*"
+files = [
+    {file = "tdqm-0.0.1-py2-none-any.whl", hash = "sha256:85680e5b7d78470cd80f87f348180f3fc924afe799f472e0f2e71bc82927e0c1"},
+    {file = "tdqm-0.0.1.tar.gz", hash = "sha256:f050004a76b1d22f70b78209b48781353c82440215b6ba7d22b1f499b05a0101"},
+]
+
+[package.dependencies]
+tqdm = "*"
+
+[[package]]
 name = "terminado"
 version = "0.18.1"
 description = "Tornado websocket backend for the Xterm.js Javascript terminal emulator library."
@@ -4437,4 +4452,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "5184780d3994c4b4ab6c17e2a8d5cf0906c5843587cc87ffde4cda607d9ff626"
+content-hash = "d1f906eafb0bb9d103877ff0c80252ad73ce194cd81759796d5172aa05c05137"
