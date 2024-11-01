@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, create_model
-from api_deployment.aux_func import get_file_from
+from api_deployment.aux_func import get_file_from, create_explainer, create_shap_values
 from  mlflow.pyfunc import load_model
 import json
 from typing import Any
@@ -9,7 +9,6 @@ from imblearn.pipeline import Pipeline
 import numpy as np
 import pandas as pd
 from inspect import signature
-from shap.explainers import TreeExplainer
 from shap import Explanation
 from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
@@ -56,70 +55,56 @@ with open(json_file,'r') as file:
 
 models: dict[str, ScoringModel] = {}
 
-#Load data
-connection_obj = sqlite3.connect(credit_requests_db)
-
 for model_info in models_to_deploy:
     
     key = model_info['model_name'] + '_v' + model_info['version']
-    print('INFO:', f'Loading model {key}...', end='\t')
+    print('INFO:', f'Loading model {key}...',)
     
     # Load model
     model_dir = get_file_from(model_info["source"], f'{key}.zip')
     model = load_model(model_uri=model_dir)._model_impl.sklearn_model
 
-    # Create tree explainer
     explainer_path = f'{model_dir}/explainer.pkl'
-          
+    # Create tree explainer
+    if not os.path.exists(explainer_path):
+        create_explainer(model, 
+                         explainer_path)
+        
     shap_values_path = f'{model_dir}/shap_values.pkl'
-    
+    # Create shap values
+    if not os.path.exists(shap_values_path):
+        create_shap_values(model,
+                            SHAP_SAMPLE_SIZE, 
+                            shap_values_path,
+                            explainer_path,
+                            credit_requests_db)
+    # Create model
     models[key] = ScoringModel(
         model=model,
         validation_threshold=model_info['validation_threshold'],
         explainer_path=explainer_path,
         shap_values_sample_path=shap_values_path,
     )
-    print('Done')
+    print('INFO:', f'Model {key} loaded', sep='\t')
 
-
-# Create shap_values
-for model in models.values():
-    if not os.path.exists(model.explainer_path):
-        explainer = TreeExplainer(model.model.steps[-1][1],
-                                Pipeline(model.model.steps[:-1]).transform(
-                                    pd.read_sql_query('SELECT * FROM application_train',
-                                                        connection_obj, 
-                                                        index_col='SK_ID_CURR').replace({None:np.nan}
-                                                    )
-                                )
-                                )
-    
-        with open(explainer_path,'wb') as file :
-            pickle.dump(explainer, file)    
-
-    if not os.path.exists(model.shap_values_sample_path):
-        query = f"""
-                SELECT * FROM application_train
-                ORDER BY RANDOM()
-                LIMIT {SHAP_SAMPLE_SIZE}
-                """
-        X_trn_trtd_smpl = Pipeline(model.model.steps[:-1]).transform(
-            pd.read_sql_query(query,
-                            connection_obj, 
-                            index_col='SK_ID_CURR'
-                            ).replace({None:np.nan})
+@app.post('/get_credit_application')
+def get_credit_application(SK_ID_CURR:int) -> ModelEntries:
+    query = f"""
+    SELECT * FROM (
+        SELECT * FROM application_test
+        UNION
+        SELECT * FROM application_train
         )
-        # Load explainer
-        with open(model.explainer_path, 'rb') as file:
-            explainer = pickle.load(file)
-    
-        global_shap_values = explainer(X_trn_trtd_smpl)
-        
-        with open(model.shap_values_sample_path,'wb') as file :
-            pickle.dump(global_shap_values, file)
-
-        del(global_shap_values, X_trn_trtd_smpl, explainer)
-
+    WHERE SK_ID_CURR = {SK_ID_CURR}
+    """
+    connection_obj = sqlite3.connect(credit_requests_db)
+    credit_application = pd.read_sql_query(query,
+                        connection_obj, 
+                        index_col='SK_ID_CURR'
+                    ).replace(
+                        {np.nan:None}
+                    )
+    return credit_application.loc[SK_ID_CURR].to_dict()
 
 @app.get("/available_model_name_version")
 def get_available_model_name_version()->list[str]:
