@@ -4,6 +4,7 @@ import zipfile
 from pydantic import HttpUrl
 from pathlib import Path
 import gdown
+import os
 
 def validate_path_or_url(value):
     # Check if it's a valid URL
@@ -28,17 +29,18 @@ def get_file_from(file_address, download_file_name=None):
             raise ValueError("Please provide a download_file_name for remote files.")
         file_name, ext = download_file_name.rsplit('.', 1)
         local_path = f"data/{file_name}.{ext}"
-
-        # Use gdown for Google Drive links
-        if "drive.google.com" in file_address:
-            gdown.download(file_address, local_path, fuzzy=True)
-        else:
-            # Standard download for other URLs
-            response = requests.get(file_address, stream=True)
-            with open(local_path, "wb") as file:
-                for chunk in response.iter_content(32768):  # Chunk size for large downloads
-                    file.write(chunk)
         
+        if not os.path.exists(local_path):
+        # Use gdown for Google Drive links
+            if "drive.google.com" in file_address :
+                gdown.download(file_address, local_path, fuzzy=True)
+            else:
+                # Standard download for other URLs
+                response = requests.get(file_address, stream=True)
+                with open(local_path, "wb") as file:
+                    for chunk in response.iter_content(32768):  # Chunk size for large downloads
+                        file.write(chunk)
+            
         # Handle zip extraction if needed
         if ext == 'zip':
             file_dir = f"data/{file_name}"

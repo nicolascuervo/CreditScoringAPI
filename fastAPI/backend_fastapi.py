@@ -2,14 +2,15 @@ import os
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, create_model
 from api_deployment.aux_func import get_file_from
-import mlflow
+from  mlflow.pyfunc import load_model
 import json
 from typing import Any
 from imblearn.pipeline import Pipeline
 import numpy as np
 import pandas as pd
 from inspect import signature
-import shap
+from shap.explainers import TreeExplainer
+from shap import Explanation
 from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
 import sqlite3
@@ -40,14 +41,14 @@ input_information = pd.read_csv(input_information_csv, index_col=0)
 field_types = input_information['Dtype'].apply(
     lambda x : eval(f'({x} | dict[int, {x}], ...)')).to_dict()
 ModelEntries = create_model('ModelEntries', **field_types)
-del(input_information)
 class ScoringModel(BaseModel):    
     model: Any    
     validation_threshold: float
-    explainer_path: Any
-    shap_values_sample_path: Any 
+    explainer_path: str
+    shap_values_sample_path: str
     class Config:
         arbitrary_types_allowed = True  # Allows non-primitive types like sklearn 
+del(input_information)
 
 # Load models
 with open(json_file,'r') as file:
@@ -57,9 +58,6 @@ models: dict[str, ScoringModel] = {}
 
 #Load data
 connection_obj = sqlite3.connect(credit_requests_db)
-X_train =  pd.read_sql_query('SELECT * FROM application_train',
-                    connection_obj, 
-                    index_col='SK_ID_CURR').replace({None:np.nan})
 
 for model_info in models_to_deploy:
     
@@ -68,24 +66,13 @@ for model_info in models_to_deploy:
     
     # Load model
     model_dir = get_file_from(model_info["source"], f'{key}.zip')
-    model = mlflow.pyfunc.load_model(model_uri=model_dir)._model_impl.sklearn_model
+    model = load_model(model_uri=model_dir)._model_impl.sklearn_model
 
     # Create tree explainer
-    X_train_treated = Pipeline(model.steps[:-1]).transform(X_train)
-    explainer = shap.explainers.TreeExplainer(model.steps[-1][1], X_train_treated)
     explainer_path = f'{model_dir}/explainer.pkl'
-    with open(explainer_path,'wb') as file :
-        pickle.dump(explainer, file)
-    
-    # Create shap_values
-    global_shap_values = explainer(X_train_treated.sample(SHAP_SAMPLE_SIZE))
+          
     shap_values_path = f'{model_dir}/shap_values.pkl'
-    with open(shap_values_path,'wb') as file :
-        pickle.dump(global_shap_values, file)
-
-    # Flush variables from memory
-    del(X_train_treated, explainer, global_shap_values)        
-
+    
     models[key] = ScoringModel(
         model=model,
         validation_threshold=model_info['validation_threshold'],
@@ -93,6 +80,45 @@ for model_info in models_to_deploy:
         shap_values_sample_path=shap_values_path,
     )
     print('Done')
+
+
+# Create shap_values
+for model in models.values():
+    if not os.path.exists(model.explainer_path):
+        explainer = TreeExplainer(model.model.steps[-1][1],
+                                Pipeline(model.model.steps[:-1]).transform(
+                                    pd.read_sql_query('SELECT * FROM application_train',
+                                                        connection_obj, 
+                                                        index_col='SK_ID_CURR').replace({None:np.nan}
+                                                    )
+                                )
+                                )
+    
+        with open(explainer_path,'wb') as file :
+            pickle.dump(explainer, file)    
+
+    if not os.path.exists(model.shap_values_sample_path):
+        query = f"""
+                SELECT * FROM application_train
+                ORDER BY RANDOM()
+                LIMIT {SHAP_SAMPLE_SIZE}
+                """
+        X_trn_trtd_smpl = Pipeline(model.model.steps[:-1]).transform(
+            pd.read_sql_query(query,
+                            connection_obj, 
+                            index_col='SK_ID_CURR'
+                            ).replace({None:np.nan})
+        )
+        # Load explainer
+        with open(model.explainer_path, 'rb') as file:
+            explainer = pickle.load(file)
+    
+        global_shap_values = explainer(X_trn_trtd_smpl)
+        
+        with open(model.shap_values_sample_path,'wb') as file :
+            pickle.dump(global_shap_values, file)
+
+        del(global_shap_values, X_trn_trtd_smpl, explainer)
 
 
 @app.get("/available_model_name_version")
@@ -201,12 +227,12 @@ for model_name_v in models.keys():
             # Load explainer
             with open(models[model_name_v].explainer_path, 'rb') as file:
                 explainer = pickle.load(file)
-                
+
             # shapify inputs
             shap_values = explainer(X_treated)       
         
         # extract explanation attributes to transfer
-        argument_list = list(signature(shap.Explanation.__init__).parameters.keys())
+        argument_list = list(signature(Explanation.__init__).parameters.keys())
         argument_list.remove('self')
         
         explanation_attrs = {attr: (getattr(shap_values, attr).tolist() 
