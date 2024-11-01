@@ -88,11 +88,11 @@ And the json file can simply have a sharing file directing to the download url f
 
 ### Heroku Deployment
 
-Update requierements.txt with
+Update requirements.txt with
  ```
 poetry export -f requirements.txt --output requirements.txt --without-hashes
 ```
-and push the requierment.txt 
+and push the requirements.txt file
 
 Also push with file `Procfile` contaning this line for the API to deploy
 
@@ -109,9 +109,9 @@ CREDIT_REQUESTS_DB=htttp/cloud_service.com/download_path?id=file_id2
 ```
 
 
-Documentation for the API can be consulted on
+When the API is running swagger for the API can be consulted on
 ```url
 url_api/docs
 ```
-When the API is running
+
 
