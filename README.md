@@ -4,8 +4,6 @@ This project was developepd in an academic context based on the scenario present
 
 An API for one or more models to score and aprove/deny credit requests for one or more clients is presented.
 
-> It runs localy at this stage.
-
 # How to use
 
 The files `application_train.csv` and `application_test.csv` from the [kaggle data](https://www.kaggle.com/c/home-credit-default-risk/data) should be converted to an sqlite database as done in notebook from parallel project [CreditScoring](https://github.com/nicolascuervo/CreditScoring). They must be loaded in two separate tables application_test and application_train. The url or path to the database should be placed in environment variable `CREDIT_REQUESTS_DB`

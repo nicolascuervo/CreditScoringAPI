@@ -20,6 +20,8 @@ shap = "^0.46.0"
 python-dotenv = "^1.0.1"
 gdown = "^5.2.0"
 tdqm = "^0.0.1"
+pytest = "^8.3.3"
+pytest-mock = "^3.14.0"
 
 
 [tool.poetry.group.dev.dependencies]
