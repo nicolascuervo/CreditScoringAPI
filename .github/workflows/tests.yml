@@ -14,8 +14,9 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    env:
+      SHAP_SAMPLE_SIZE: ${{ secrets.SHAP_SAMPLE_SIZE }}
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python 3.12
