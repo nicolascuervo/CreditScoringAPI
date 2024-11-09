@@ -37,6 +37,4 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        env:
-          SHAP_SAMPLE_SIZE: ${{ secrets.SHAP_SAMPLE_SIZE }}
         pytest tests
