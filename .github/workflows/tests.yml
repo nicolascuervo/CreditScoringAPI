@@ -10,7 +10,8 @@ on:
     branches: [ '*' ]
 env:
   SHAP_SAMPLE_SIZE: 1000
-
+  CREDIT_REQUESTS_DB: ${{secrets.CREDIT_REQUESTS_DB}}
+  MODELS_TO_DEPLOY_JSON: ${{secrets.MODELS_TO_DEPLOY_JSON}}
 permissions:
   contents: read
 jobs:
