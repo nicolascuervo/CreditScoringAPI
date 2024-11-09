@@ -1,9 +1,7 @@
 import os
 from fastapi import FastAPI, Query
-from pydantic import BaseModel, create_model
-from api_deployment.aux_func import get_file_from, create_explainer, create_shap_values
-from  mlflow.pyfunc import load_model
-import json
+from pydantic import  create_model
+from api_deployment.aux_func import get_file_from, ScoringModel, load_models
 from typing import Any
 from imblearn.pipeline import Pipeline
 import numpy as np
@@ -14,6 +12,7 @@ from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
 import sqlite3
 import pickle
+
 
 app = FastAPI(
         title = 'Credit Scoring API',
@@ -40,52 +39,10 @@ input_information = pd.read_csv(input_information_csv, index_col=0)
 field_types = input_information['Dtype'].apply(
     lambda x : eval(f'({x} | dict[int, {x}], ...)')).to_dict()
 ModelEntries = create_model('ModelEntries', **field_types)
-class ScoringModel(BaseModel):    
-    model: Any    
-    validation_threshold: float
-    explainer_path: str
-    shap_values_sample_path: str
-    class Config:
-        arbitrary_types_allowed = True  # Allows non-primitive types like sklearn 
+
 del(input_information)
 
-# Load models
-with open(json_file,'r') as file:
-    models_to_deploy = json.load(file)
-
-models: dict[str, ScoringModel] = {}
-
-for model_info in models_to_deploy:
-    
-    key = model_info['model_name'] + '_v' + model_info['version']
-    print('INFO:', f'Loading model {key}...',)
-    
-    # Load model
-    model_dir = get_file_from(model_info["source"], f'{key}.zip')
-    model = load_model(model_uri=model_dir)._model_impl.sklearn_model
-
-    explainer_path = f'{model_dir}/explainer.pkl'
-    # Create tree explainer
-    if not os.path.exists(explainer_path):
-        create_explainer(model, 
-                         explainer_path)
-        
-    shap_values_path = f'{model_dir}/shap_values.pkl'
-    # Create shap values
-    if not os.path.exists(shap_values_path):
-        create_shap_values(model,
-                            SHAP_SAMPLE_SIZE, 
-                            shap_values_path,
-                            explainer_path,
-                            credit_requests_db)
-    # Create model
-    models[key] = ScoringModel(
-        model=model,
-        validation_threshold=model_info['validation_threshold'],
-        explainer_path=explainer_path,
-        shap_values_sample_path=shap_values_path,
-    )
-    print('INFO:', f'Model {key} loaded', sep='\t')
+models: dict[str, ScoringModel] = load_models(json_file, SHAP_SAMPLE_SIZE, credit_requests_db)
 
 @app.post('/get_credit_application')
 def get_credit_application(SK_ID_CURR:int) -> ModelEntries:
@@ -108,7 +65,8 @@ def get_credit_application(SK_ID_CURR:int) -> ModelEntries:
 
 @app.get("/available_model_name_version")
 def get_available_model_name_version()->list[str]:
-    """ Provides a list of `model_name_version` strings that indicate which versions of which models are abeing served by the API
+    """ 
+    Provides a list of `model_name_version` strings that indicate which versions of which models are abeing served by the API
     """
     return list(models.keys())
 
