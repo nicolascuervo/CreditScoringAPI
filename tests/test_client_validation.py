@@ -117,4 +117,4 @@ def test_validate_client(mock_models, mock_model_entries):
             
             for i in range(1000):
                 result = validate_client(input_data=mock_model_entries, model_name_v='random_classifier')                        
-                assert result['credit_approved'] ==( result['default_probability'] < result['validation_threshold']), f"p={float(result['default_probability']):0.3f} >= vt={float(result['validation_threshold']):0.4f}"
+                assert result['credit_approved'] ==( result['default_probability'] <= result['validation_threshold']), f"p={float(result['default_probability']):0.3f} >= vt={float(result['validation_threshold']):0.4f}"
