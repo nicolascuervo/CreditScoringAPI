@@ -23,7 +23,7 @@ app = FastAPI(
 
 load_dotenv()
 # size of random credit data to whose shap values will be initialized to be served in beeswarm plot
-SHAP_SAMPLE_SIZE = int(os.getenv('SHAP_SAMPLE_SIZE')) 
+SHAP_SAMPLE_SIZE = int(os.getenv('SHAP_SAMPLE_SIZE',-1)) 
 
 json_file_path = os.getenv('MODELS_TO_DEPLOY_JSON')
 json_file = get_file_from(json_file_path, 'models_to_deploy.json')

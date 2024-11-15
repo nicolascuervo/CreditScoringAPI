@@ -118,3 +118,4 @@ async def test_validate_client(mock_models, mock_model_entries):
             for i in range(1000):
                 result = await validate_client(input_data=mock_model_entries, model_name_v='random_classifier')                        
                 assert result['credit_approved'][0] == ( result['default_probability'][0] < result['validation_threshold']), f"p={float(result['default_probability'][0]):0.3f} < vt={float(result['validation_threshold']):0.4f}"
+
