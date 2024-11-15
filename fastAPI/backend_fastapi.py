@@ -76,7 +76,7 @@ def credit_request_dict_to_dataframe(input_data: ModelEntries): # type: ignore
     return input_df
 
 
-def validate_client( input_data: ModelEntries, model_name_v: str)->dict[str,float|bool|list[float|bool]]: # type: ignore
+async def validate_client( input_data: ModelEntries, model_name_v: str)->dict[str,float|bool|list[float|bool]]: # type: ignore
         
     if model_name_v not in models:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -86,11 +86,11 @@ def validate_client( input_data: ModelEntries, model_name_v: str)->dict[str,floa
     y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]
     validation_threshold = models[model_name_v].validation_threshold
     
-    respond = {'default_probability' : y_pred_proba,
+    respond = {'default_probability' : y_pred_proba.tolist(),
                 'validation_threshold' : validation_threshold,
-                'credit_approved' : y_pred_proba < validation_threshold,
+                'credit_approved' : (y_pred_proba < validation_threshold).tolist(),
                 }
-    
+    print(respond)
     return respond    
 
 
