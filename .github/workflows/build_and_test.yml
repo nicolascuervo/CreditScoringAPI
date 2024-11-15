@@ -14,8 +14,7 @@ env:
   MODELS_TO_DEPLOY_JSON: ${{secrets.MODELS_TO_DEPLOY_JSON}}
 permissions:
   contents: read
-jobs:
-  
+jobs:  
   build:
     name: build
     runs-on: ubuntu-latest    
@@ -31,6 +30,7 @@ jobs:
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
   lint:
+    needs: build
     name: Lint with flake8
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +44,7 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
   test:
+    needs: build
     name: test with pytest
     runs-on: ubuntu-latest
     steps:  
