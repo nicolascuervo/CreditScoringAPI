@@ -101,20 +101,20 @@ def mock_model_entries():
     # Return an instance of MockModelEntries with random values for testing
     return MockModelEntries(**{str(i): np.random.random() for i in range(10)})
 
-
-def test_validate_client(mock_models, mock_model_entries):
+@pytest.mark.asyncio
+async def test_validate_client(mock_models, mock_model_entries):
     with patch('fastAPI.backend_fastapi.models', mock_models):
         with patch('fastAPI.backend_fastapi.ModelEntries', MockModelEntries):
-            result = validate_client(input_data=mock_model_entries, model_name_v='always_zero')            
-            assert result['default_probability'] == 0
+            result = await validate_client(input_data=mock_model_entries, model_name_v='always_zero')            
+            assert result['default_probability'][0] == 0
             assert result['validation_threshold'] == 1.0
-            assert result['credit_approved'] 
+            assert result['credit_approved'][0]
             
-            result = validate_client(input_data=mock_model_entries, model_name_v='always_one')            
-            assert result['default_probability'] == 1.0
+            result = await validate_client(input_data=mock_model_entries, model_name_v='always_one')            
+            assert result['default_probability'][0] == 1.0
             assert result['validation_threshold'] == 0.0
-            assert not result['credit_approved'] 
+            assert not result['credit_approved'][0]
             
             for i in range(1000):
-                result = validate_client(input_data=mock_model_entries, model_name_v='random_classifier')                        
-                assert result['credit_approved'] ==( result['default_probability'] > result['validation_threshold']), f"p={float(result['default_probability']):0.3f} >= vt={float(result['validation_threshold']):0.4f}"
+                result = await validate_client(input_data=mock_model_entries, model_name_v='random_classifier')                        
+                assert result['credit_approved'][0] == ( result['default_probability'][0] < result['validation_threshold']), f"p={float(result['default_probability'][0]):0.3f} < vt={float(result['validation_threshold']):0.4f}"
