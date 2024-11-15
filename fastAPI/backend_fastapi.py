@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from pydantic import  create_model
 from api_deployment.aux_func import get_file_from, ScoringModel, load_models
 from typing import Any
@@ -12,7 +12,6 @@ from projet07.model_evaluation import get_feature_importance_from_model
 from dotenv import load_dotenv
 import sqlite3
 import pickle
-
 
 app = FastAPI(
         title = 'Credit Scoring API',
@@ -76,61 +75,57 @@ def credit_request_dict_to_dataframe(input_data: ModelEntries): # type: ignore
     input_df = input_df.replace({None:np.nan}).T
     return input_df
 
-for model_name_v in models.keys():    
-    async def validate_client( input_data: ModelEntries )->dict[str,float|bool|list[float|bool]]: # type: ignore
-        """
-        Endpoint to validate a client's credit approval status based on a specific model.
 
-        This endpoint uses a pre-trained model identified by '{model_name_v}' to predict
-        the probability of default for a client based on the provided input data. If
-        the predicted probability is below the model's validation threshold, the credit
-        is approved.
-
-        Parameters:
-        -----------
-        input_data : ModelEntries
-            The client's data used for model prediction. This is expected to be an instance
-            of `ModelEntries` and should contain the necessary input fields for the model.
-
-        Returns:
-        --------
-        dict[str, float | bool | list[float | bool]]
-            A dictionary with the following keys:
-            
-            - 'default_probability' (list[float]): Predicted probability(s) of default based on the input data.
-            - 'validation_threshold' (float): The threshold used to decide if credit is approved.
-            - 'credit_approved' (list[bool]): Approval decision(s) for each input record, where True
-              indicates credit approval (i.e., predicted probability is below the threshold).
-
-        Usage:
-        ------
-        Make a POST request to this endpoint with client data, such as:
-
-            POST {model_name_v}/validate_client/
-
-        The endpoint will return a JSON response indicating the client's default probability, the
-        threshold used, and whether credit is approved.
-
-        Notes:
-        ------
-        - Each model is served under a different endpoint, and the model is dynamically
-          selected using the `model_name_v` in the endpoint path.
-        - Missing values in `input_data` are replaced with NaN for prediction.
-        """
-        input_df = credit_request_dict_to_dataframe(input_data)
-
-        y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]
-        validation_threshold = models[model_name_v].validation_threshold
+def validate_client( input_data: ModelEntries, model_name_v: str)->dict[str,float|bool|list[float|bool]]: # type: ignore
         
-        respond = {'default_probability' : y_pred_proba,
-                    'validation_threshold' : validation_threshold,
-                    'credit_approved' : y_pred_proba < validation_threshold,
-                    }
-        
-        return respond    
-    validate_client.__doc__ = validate_client.__doc__.format(model_name_v=model_name_v)    
-    app.post(f"/{model_name_v}/validate_client")(validate_client)
+    if model_name_v not in models:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    input_df = credit_request_dict_to_dataframe(input_data)
+
+    y_pred_proba = models[model_name_v].model.predict_proba(input_df)[:, 1]
+    validation_threshold = models[model_name_v].validation_threshold
     
+    respond = {'default_probability' : y_pred_proba,
+                'validation_threshold' : validation_threshold,
+                'credit_approved' : y_pred_proba < validation_threshold,
+                }
+    
+    return respond    
+
+
+def create_validate_endpoint(model_name_v: str):
+    async def endpoint(input_data: ModelEntries):
+        return await validate_client(input_data=input_data, model_name_v=model_name_v)
+
+    # Customize the docstring for each endpoint to reflect the specific model
+    endpoint.__doc__ = f"""
+    Validate client status using the '{model_name_v}' model.
+
+    This endpoint predicts the probability of default for a client based on the
+    '{model_name_v}' model. If the predicted probability is below the model's
+    validation threshold, credit is approved.
+
+    Parameters:
+    -----------
+    input_data : ModelEntries
+        The client's data used for prediction.
+
+    Returns:
+    --------
+    dict[str, float | bool | list[float | bool]]
+        - 'default_probability' (list[float]): Predicted default probability.
+        - 'validation_threshold' (float): Approval threshold for the model.
+        - 'credit_approved' (list[bool]): Indicates if credit is approved.
+    """
+    return endpoint
+
+# Register each model-specific endpoint with a unique docstring
+for model_name_v in models.keys():
+    app.post(f"/{model_name_v}/validate_client")(create_validate_endpoint(model_name_v))
+
+
+for model_name_v in models.keys():       
     def shap_value_attributes(input_data: ModelEntries|None=None)->dict[str,Any]: # type: ignore
         """
         Computes SHAP values for the provided input data and extracts key attributes of the explanation for interpretation.
