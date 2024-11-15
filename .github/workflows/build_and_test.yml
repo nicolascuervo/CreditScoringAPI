@@ -16,7 +16,7 @@ permissions:
   contents: read
 jobs:  
   build:
-    name: build
+    name: build and test
     runs-on: ubuntu-latest    
     steps:    
     - uses: actions/checkout@v4
@@ -29,25 +29,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-  lint:
-    needs: build
-    name: Lint with flake8
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.12"
     - name: Run flake8
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-  test:
-    needs: build
-    name: test with pytest
-    runs-on: ubuntu-latest
-    steps:  
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics  
     - name: Test with pytest
       run: |
         pytest tests
