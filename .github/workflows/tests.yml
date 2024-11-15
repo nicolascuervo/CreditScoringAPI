@@ -5,9 +5,9 @@ name: Python application
 
 on:
   push:
-    branches: [ '*']
+    branches: '*'
   pull_request:
-    branches: [ '*' ]
+    branches: '*'
 env:
   SHAP_SAMPLE_SIZE: 1000
   CREDIT_REQUESTS_DB: ${{secrets.CREDIT_REQUESTS_DB}}
